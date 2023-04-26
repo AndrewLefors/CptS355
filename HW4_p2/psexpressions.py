@@ -222,11 +222,7 @@ class CodeArrayValue(Value):
     def apply(self, ps_env):
         # Find the index of the function definition's stack entry (for static scoping)
         if ps_env.scope == "static":
-            index = len(ps_env.dictstack) - 1
-            while index >= 0:
-                if self in ps_env.dictstack[index][1].values():
-                    break
-                index = ps_env.dictstack[index][0]
+            index = ps_env.dictstack[-1][0]
 
             # Push a new tuple (AR) onto the dictstack with the static link and an empty dictionary
             ps_env.dictPush((index, {}))

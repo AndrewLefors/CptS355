@@ -125,6 +125,22 @@ class PSOperators:
 
         print("Error: Key not found in Dict!")
         return None
+    """Recursively search the dictstack tuples for the value in name in the dictionary and return the index if found. 
+    If it reaches the first value in the dictstack (since we start from the end), return None.
+    """
+    #-------- static link lookup
+    def find_index_in_dictstack(self, name, index=None):
+
+        if index is None:
+            index = len(self.dictstack) - 1
+
+        if index < 0:
+            return None
+
+        if name in self.dictstack[index][1]:
+            return index
+
+        return self.find_index_in_dictstack(name, index-1)
 
     #------- Arithmetic Operators --------------
 
@@ -281,7 +297,7 @@ class PSOperators:
         print("===**dictstack**===")
         for i, item in enumerate(reversed(self.dictstack)):
             static_link_index, item_dict = item
-            print("----{}----{}----".format(i, static_link_index))
+            print("----{}----{}----".format(len(self.dictstack)-i-1, static_link_index))
             for key, value in item_dict.items():
                 print("{key} {value}".format(key=key, value=value))
         print("=================")
@@ -525,71 +541,77 @@ class PSOperators:
        Will be completed in part-2. 
     """
     def psIf(self):
-        condition = self.opPop()
-        code = self.opPop()
+        code_array = self.opPop()
+        bool_value = self.opPop()
 
-        if not isinstance(condition, bool) or not isinstance(code, CodeArrayValue):
-            raise ValueError("Invalid arguments for if operator")
+        if isinstance(bool_value, bool):
+            if bool_value:
+                # Push a new AR onto the dictstack
+                static_link_index = len(self.dictstack) - 1
+                self.dictPush((static_link_index, {}))
 
-        if condition:
-            code.apply(self)
+                # Evaluate the code block
+                for code in code_array:
+                    code.eval(self)
+
+                # Pop the AR from the dictstack
+                self.dictPop()
+            else:
+                pass  # Do nothing
         else:
-            self.dictPop()
+            raise TypeError("Error: Invalid boolean value in psIf")
+
+
 
     """ ifelse operator
         Pops two CodeArrayValue objects and a boolean value, if the value is True, executes (applies) the bottom CodeArrayValue otherwise executes the top CodeArrayValue.
         Will be completed in part-2. 
     """
     def psIfelse(self):
-        else_code = self.opPop()
-        if_code = self.opPop()
-        condition = self.opPop()
+        else_code_array = self.opPop()
+        then_code_array = self.opPop()
+        bool_value = self.opPop()
 
-        if not isinstance(condition, bool) or not isinstance(if_code, CodeArrayValue) or not isinstance(else_code, CodeArrayValue):
-            raise ValueError("Invalid arguments for ifelse operator")
+        if isinstance(bool_value, bool):
+            # Choose the correct code block based on the bool_value
+            code_array = then_code_array if bool_value else else_code_array
 
-        if condition:
-            if_code.apply(self)
+            # Push a new AR onto the dictstack
+            static_link_index = len(self.dictstack) - 1
+            self.dictPush((static_link_index, {}))
+
+            # Evaluate the code block
+            code_array.apply(self)
+
+            # Pop the AR from the dictstack
+            self.dictPop()
         else:
-            else_code.apply(self)
-        self.dictPop()
+            raise TypeError("Error: Invalid boolean value in psIfelse")
 
-        
 
 
     #------- Loop Operators --------------
-    """
-       Implements for operator.   
-       Pops a CodeArrayValue object, the end index (end), the increment (inc), and the begin index (begin) and 
-       executes the code array for all loop index values ranging from `begin` to `end`. 
-       Pushes the current loop index value to opstack before each execution of the CodeArrayValue. 
-       Will be completed in part-2. 
-    """ 
     def psFor(self):
-        code = self.opPop()
+        code_array = self.opPop()
         end = self.opPop()
         inc = self.opPop()
-        begin = self.opPop()
+        start = self.opPop()
 
-        if not isinstance(code, CodeArrayValue) or not isinstance(end, int) or not isinstance(inc, int) or not isinstance(begin, int):
-            raise ValueError("Invalid arguments for for operator")
-
-        # Add a condition to break out of the loop when `inc` is 0
-        if inc == 0:
-            raise ValueError("Increment value in for loop cannot be 0")
-
-        # Determine the direction of the loop
-        if inc > 0:
-            cond = lambda x, y: x <= y
+        if isinstance(start, int) and isinstance(end, int) and isinstance(inc, int):
+            # Iterate over the range and execute the code block
+            i = start
+            while True:
+                # Evaluate the code block
+                self.opPush(i)
+                code_array.apply(self)
+                i += inc
+                if (inc > 0 and i >= end) or (inc < 0 and i <= end):
+                    break
         else:
-            cond = lambda x, y: x >= y
+            raise TypeError("Error: Invalid integer values in psFor")
 
-        # Execute the loop
-        for i in range(begin, end + inc, inc):
-            if not cond(i, end):
-                break
-            self.opPush(i)
-            code.apply(self)
+        # Reset the exit flag after exiting the loop
+        self.exit_for = False
 
 
 
