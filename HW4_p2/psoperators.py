@@ -2,12 +2,12 @@ from colors import *
 from psexpressions import StringValue, DictionaryValue, CodeArrayValue
 
 class PSOperators:
-    def __init__(self):
+    def __init__(self, scoperule):
         #stack variables
         self.opstack = []  #assuming top of the stack is the end of the list
-        self.dictstack = []  #assuming top of the stack is the end of the list
-        # The environment that the REPL evaluates expressions in.
-        # Uncomment this dictionary in part2
+        self.dictstack = [(0, {})]  #assuming top of the stack is the end of the list
+        #attrbute for scope rule for static and dynamic scoping
+        self.scope = scoperule
         self.builtin_operators = {
             "add":self.add,
             "sub":self.sub,
@@ -31,8 +31,6 @@ class PSOperators:
             "getinterval":self.getinterval,
             "putinterval":self.putinterval,
             "search" : self.search,
-            "begin":self.begin,
-            "end":self.end,
             "def":self.psDef,
             "if":self.psIf,
             "ifelse":self.psIfelse,
@@ -84,18 +82,20 @@ class PSOperators:
     """  
     def define(self, name, value):
         if (name[0] != '/'):
-            print("Error: Variable names MUST beging with '/'.")
+            print("Error: Variable names MUST begin with '/'.")
             return None
         if (len(self.dictstack) > 0):
-            #self.dictstack[-1].value[name] = value
-            varDict = self.dictPop()
+            # Get the topmost tuple from the dictstack
+            static_link_index, varDict = self.dictstack[-1]
+
+            # Update the dictionary with the new variable
             varDict[name] = value
-            self.dictPush(varDict)
-            
+
+            # No need to pop and push the dictionary, as the update is done in place
         else:
-            y = {}
-            self.dictPush(y)
-            self.dictstack[-1][name] = value
+            # If the dictstack is empty, push a new tuple with the base static-link-index and a dictionary with the new variable
+            self.dictstack.append((0, {name: value}))
+
 
 
             
@@ -107,16 +107,25 @@ class PSOperators:
     """
 
     def lookup(self, name):
-        if (len(self.dictstack) > 0):
-            #then dicts are on the stack; cycle through
-            for i in range(len(self.dictstack) - 1, -1, -1):
-                varDict = self.dictstack[i].items()
-                for key,value in varDict:
-                    if (key == ("/"+name)):
-                        return value
+        if len(self.dictstack) > 0:
+            if self.scope == "dynamic":
+                # Dynamic scoping: search the dictstack from top to bottom
+                for i in range(len(self.dictstack) - 1, -1, -1):
+                    varDict = self.dictstack[i][1]  # Access the dictionary part of the tuple
+                    if ("/" + name) in varDict:
+                        return varDict["/" + name]
+            else:
+                # Static scoping: follow the static links
+                index = len(self.dictstack) - 1
+                while index >= 0:
+                    static_link_index, varDict = self.dictstack[index]
+                    if ("/" + name) in varDict:
+                        return varDict["/" + name]
+                    index = static_link_index
+
         print("Error: Key not found in Dict!")
         return None
-    
+
     #------- Arithmetic Operators --------------
 
     """
@@ -265,14 +274,22 @@ class PSOperators:
        Prints the opstack and dictstack. The end of the list is the top of the stack. 
     """
     def stack(self):
-        print(OKGREEN+"**opstack**")
+        print(self.scope.upper())
+        print("===**opstack**===")
         for item in reversed(self.opstack):
             print(item)
-        print("-----------------------"+CEND)
-        print(RED+"**dictstack**")
-        for item in reversed(self.dictstack):
-            print(item)
-        print("-----------------------"+ CEND)
+        print("===**dictstack**===")
+        for i, item in enumerate(reversed(self.dictstack)):
+            static_link_index, item_dict = item
+            print("----{}----{}----".format(i, static_link_index))
+            for key, value in item_dict.items():
+                print("{key} {value}".format(key=key, value=value))
+        print("=================")
+
+
+
+
+
 
 
     """
@@ -493,22 +510,6 @@ class PSOperators:
            
 
     # ------- Operators that manipulate the dictstact --------------
-    """ begin operator
-        Pops a DictionaryValue value from opstack and pushes it's `value` to the dictstack."""
-    def begin(self):
-        dic = self.opPop()
-        if (not(isinstance(dic, DictionaryValue))):
-            print("Error: begin - Value must be DictionaryValue")
-            return
-        self.dictPush(dic.value)
-
-    """ end operator
-        Pops the top dictionary from dictstack."""
-    def end(self):
-        if (len(self.dictstack) > 0):
-            self.dictPop()
-        else:
-            print("Error: end - No dictionaires on dictStack")
         
     """ Pops a name and a value from stack, adds the definition to the dictionary at the top of the dictstack. """
     def psDef(self):
@@ -524,27 +525,35 @@ class PSOperators:
        Will be completed in part-2. 
     """
     def psIf(self):
-        codeArray = self.opPop()
-        boolVal = self.opPop()
-        if boolVal:
-            codeArray.apply(self)
-            
+        condition = self.opPop()
+        code = self.opPop()
 
-        
+        if not isinstance(condition, bool) or not isinstance(code, CodeArrayValue):
+            raise ValueError("Invalid arguments for if operator")
+
+        if condition:
+            code.apply(self)
+        else:
+            self.dictPop()
 
     """ ifelse operator
         Pops two CodeArrayValue objects and a boolean value, if the value is True, executes (applies) the bottom CodeArrayValue otherwise executes the top CodeArrayValue.
         Will be completed in part-2. 
     """
     def psIfelse(self):
-        codeTop = self.opPop()
-        codeBottom = self.opPop()
-        boolVal = self.opPop()
+        else_code = self.opPop()
+        if_code = self.opPop()
+        condition = self.opPop()
 
-        if boolVal:
-            codeBottom.apply(self)
+        if not isinstance(condition, bool) or not isinstance(if_code, CodeArrayValue) or not isinstance(else_code, CodeArrayValue):
+            raise ValueError("Invalid arguments for ifelse operator")
+
+        if condition:
+            if_code.apply(self)
         else:
-            codeTop.apply(self)
+            else_code.apply(self)
+        self.dictPop()
+
         
 
 
@@ -565,11 +574,23 @@ class PSOperators:
         if not isinstance(code, CodeArrayValue) or not isinstance(end, int) or not isinstance(inc, int) or not isinstance(begin, int):
             raise ValueError("Invalid arguments for for operator")
 
-        i = begin
-        while (inc > 0 and i <= end) or (inc < 0 and i >= end):
+        # Add a condition to break out of the loop when `inc` is 0
+        if inc == 0:
+            raise ValueError("Increment value in for loop cannot be 0")
+
+        # Determine the direction of the loop
+        if inc > 0:
+            cond = lambda x, y: x <= y
+        else:
+            cond = lambda x, y: x >= y
+
+        # Execute the loop
+        for i in range(begin, end + inc, inc):
+            if not cond(i, end):
+                break
             self.opPush(i)
             code.apply(self)
-            i += inc
+
 
 
 

@@ -220,13 +220,31 @@ class CodeArrayValue(Value):
         self.body = body
 
     def apply(self, ps_env):
-        """`ps_env` is the PSOperators object that include the `opstack` and `dictstack`. """
+        # Find the index of the function definition's stack entry (for static scoping)
+        if ps_env.scope == "static":
+            index = len(ps_env.dictstack) - 1
+            while index >= 0:
+                if self in ps_env.dictstack[index][1].values():
+                    break
+                index = ps_env.dictstack[index][0]
+
+            # Push a new tuple (AR) onto the dictstack with the static link and an empty dictionary
+            ps_env.dictPush((index, {}))
+        else:
+            # Push a new tuple (AR) onto the dictstack with an empty dictionary (for dynamic scoping)
+            ps_env.dictPush((0, {}))
+
+        # Evaluate the expressions in the body
         for expr in self.body:
             if isinstance(expr, str):
                 ps_str = PSString(expr)
                 ps_str.eval(ps_env)
             else:
                 expr.eval(ps_env)
+
+        # Pop the AR from the dictstack
+        ps_env.dictPop()
+
 
 
     def __str__(self):
